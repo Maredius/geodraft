@@ -1,0 +1,13 @@
+# Geodraft requirements
+# Base: GeoNode 4.1.3 (included in Docker image)
+
+# Additional packages for versioned editing
+django-reversion==5.0.8
+django-simple-history==3.4.0
+djangorestframework==3.14.0
+djangorestframework-gis==1.0
+diff-match-patch==20230430
+jsonschema==4.20.0
+
+# Development tools (optional)
+django-debug-toolbar==4.2.0

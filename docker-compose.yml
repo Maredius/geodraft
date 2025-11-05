@@ -1,0 +1,101 @@
+version: '3.9'
+
+services:
+  db:
+    image: geonode/postgis:15
+    container_name: geodraft-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      GEONODE_DATABASE: geonode
+      GEONODE_DATABASE_PASSWORD: geonode
+      GEONODE_GEODATABASE: geonode_data
+      GEONODE_GEODATABASE_PASSWORD: geonode_data
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - dbbackups:/pg_backups
+    healthcheck:
+      test: "pg_isready -d postgres -U postgres"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  geoserver:
+    image: geonode/geoserver:2.23.0
+    container_name: geodraft-geoserver
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GEOSERVER_ADMIN_USER: admin
+      GEOSERVER_ADMIN_PASSWORD: geoserver
+      GEOSERVER_LOCATION: http://geoserver:8080/geoserver/
+      PUBLIC_LOCATION: http://localhost:8080/geoserver/
+      INITIAL_MEMORY: 2G
+      MAXIMUM_MEMORY: 4G
+    volumes:
+      - geoserver-data:/geoserver_data/data
+    ports:
+      - "8080:8080"
+
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: geodraft-django
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      geoserver:
+        condition: service_started
+    environment:
+      # Django settings
+      DJANGO_SETTINGS_MODULE: geodraft.settings
+      SECRET_KEY: 'your-secret-key-change-in-production'
+      DEBUG: 'True'
+      ALLOWED_HOSTS: "localhost,127.0.0.1"
+      
+      # Database
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/geonode
+      GEODATABASE_URL: postgis://postgres:postgres@db:5432/geonode_data
+      
+      # GeoServer
+      GEOSERVER_LOCATION: http://geoserver:8080/geoserver/
+      GEOSERVER_PUBLIC_LOCATION: http://localhost:8080/geoserver/
+      GEOSERVER_ADMIN_USER: admin
+      GEOSERVER_ADMIN_PASSWORD: geoserver
+      
+      # Other settings
+      SITEURL: http://localhost:8000/
+      PROXY_URL: /proxy/?url=
+    volumes:
+      - ./geodraft:/usr/src/geodraft
+      - statics:/mnt/volumes/statics
+      - geonode-media:/mnt/volumes/media
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+
+  nginx:
+    image: nginx:alpine
+    container_name: geodraft-nginx
+    restart: unless-stopped
+    depends_on:
+      - django
+      - geoserver
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - statics:/mnt/volumes/statics:ro
+      - geonode-media:/mnt/volumes/media:ro
+    ports:
+      - "80:80"
+
+volumes:
+  dbdata:
+  dbbackups:
+  geoserver-data:
+  statics:
+  geonode-media:
